@@ -1,0 +1,23 @@
+# Environment variables
+.env
+.env.*
+!.env.template
+
+# Docker and Database Data Volumes
+# (We don't want to commit actual database files or MinIO objects)
+data/
+minio_data/
+clickhouse_data/
+n8n_data/
+*.log
+
+# OS / Editor generated files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Test folders or scratch scripts
+test/
+scratch/

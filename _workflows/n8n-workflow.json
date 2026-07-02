@@ -1,0 +1,236 @@
+{
+  "name": "ClickHouse Smart Incremental Backup (With MS Teams Alerts)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "1",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        180,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $now.weekday }}",
+              "operation": "equal",
+              "value2": 7
+            }
+          ]
+        }
+      },
+      "id": "2",
+      "name": "Is Sunday?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        400,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://clickhouse:8123/?s3_max_single_part_upload_size=536870912&max_execution_time=0",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "text/plain",
+        "body": "=BACKUP ALL EXCEPT DATABASE information_schema, INFORMATION_SCHEMA, system TO S3('http://minio:9000/clickhouse-backups/backup-{{ $now.toFormat('yyyyMMdd') }}/', 'system_admin', 'qwer1234') ASYNC;"
+      },
+      "id": "3",
+      "name": "Full Backup (Sunday)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        650,
+        100
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "clickhouse_credentials",
+          "name": "ClickHouse Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://clickhouse:8123/?s3_max_single_part_upload_size=536870912&max_execution_time=0",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "text/plain",
+        "body": "=BACKUP ALL EXCEPT DATABASE information_schema, INFORMATION_SCHEMA, system TO S3('http://minio:9000/clickhouse-backups/backup-{{ $now.toFormat('yyyyMMdd') }}/', 'system_admin', 'qwer1234') SETTINGS base_backup = S3('http://minio:9000/clickhouse-backups/backup-{{ $now.minus({days: 1}).toFormat('yyyyMMdd') }}/', 'system_admin', 'qwer1234') ASYNC;"
+      },
+      "id": "4",
+      "name": "Incremental Backup (Mon-Sat)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        650,
+        350
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "clickhouse_credentials",
+          "name": "ClickHouse Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR_MS_TEAMS_WEBHOOK_URL_HERE",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={\n  \"@type\": \"MessageCard\",\n  \"@context\": \"http://schema.org/extensions\",\n  \"themeColor\": \"28A745\",\n  \"summary\": \"ClickHouse Backup Success\",\n  \"sections\": [\n    {\n      \"activityTitle\": \"✅ **ClickHouse Backup Completed Successfully**\",\n      \"activitySubtitle\": \"Automated Backup Routine\",\n      \"facts\": [\n        {\n          \"name\": \"Date:\",\n          \"value\": \"{{ $now.toFormat('yyyy-MM-dd HH:mm:ss') }}\"\n        },\n        {\n          \"name\": \"Backup Type:\",\n          \"value\": \"Full Backup (Sunday)\"\n        },\n        {\n          \"name\": \"Target Folder:\",\n          \"value\": \"backup-{{ $now.toFormat('yyyyMMdd') }}\"\n        }\n      ],\n      \"markdown\": true\n    }\n  ]\n}",
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "id": "5",
+      "name": "MS Teams Alert (Full Success)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        950,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR_MS_TEAMS_WEBHOOK_URL_HERE",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={\n  \"@type\": \"MessageCard\",\n  \"@context\": \"http://schema.org/extensions\",\n  \"themeColor\": \"28A745\",\n  \"summary\": \"ClickHouse Backup Success\",\n  \"sections\": [\n    {\n      \"activityTitle\": \"✅ **ClickHouse Backup Completed Successfully**\",\n      \"activitySubtitle\": \"Automated Backup Routine\",\n      \"facts\": [\n        {\n          \"name\": \"Date:\",\n          \"value\": \"{{ $now.toFormat('yyyy-MM-dd HH:mm:ss') }}\"\n        },\n        {\n          \"name\": \"Backup Type:\",\n          \"value\": \"Incremental Backup\"\n        },\n        {\n          \"name\": \"Target Folder:\",\n          \"value\": \"backup-{{ $now.toFormat('yyyyMMdd') }}\"\n        }\n      ],\n      \"markdown\": true\n    }\n  ]\n}",
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "id": "5b",
+      "name": "MS Teams Alert (Inc Success)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        950,
+        350
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "6",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        180,
+        550
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR_MS_TEAMS_WEBHOOK_URL_HERE",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={\n  \"@type\": \"MessageCard\",\n  \"@context\": \"http://schema.org/extensions\",\n  \"themeColor\": \"DC3545\",\n  \"summary\": \"ClickHouse Backup Failed\",\n  \"sections\": [\n    {\n      \"activityTitle\": \"🚨 **ClickHouse Backup FAILED!**\",\n      \"activitySubtitle\": \"Automated Backup Routine Error\",\n      \"facts\": [\n        {\n          \"name\": \"Failed Node:\",\n          \"value\": \"{{ $json['execution']['lastNodeExecuted'] }}\"\n        },\n        {\n          \"name\": \"Error Message:\",\n          \"value\": \"{{ $json['error']['message'] }}\"\n        },\n        {\n          \"name\": \"Time:\",\n          \"value\": \"{{ $now.toFormat('yyyy-MM-dd HH:mm:ss') }}\"\n        }\n      ],\n      \"markdown\": true\n    }\n  ]\n}",
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "id": "7",
+      "name": "MS Teams Alert (Error)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        400,
+        550
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Is Sunday?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Sunday?": {
+      "main": [
+        [
+          {
+            "node": "Full Backup (Sunday)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Incremental Backup (Mon-Sat)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Full Backup (Sunday)": {
+      "main": [
+        [
+          {
+            "node": "MS Teams Alert (Full Success)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Incremental Backup (Mon-Sat)": {
+      "main": [
+        [
+          {
+            "node": "MS Teams Alert (Inc Success)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "MS Teams Alert (Error)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
